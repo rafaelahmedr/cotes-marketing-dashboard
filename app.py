@@ -163,7 +163,7 @@ div[data-baseweb="select"] span { color:#e6edf3 !important; font-size:0.8rem !im
 .spotlight-card {
     background:linear-gradient(135deg,#1b2230,#161b22);
     border:1px solid #30363d; border-left:4px solid #e85d4a;
-    border-radius:8px; padding:14px 20px; margin-bottom:8px;
+    border-radius:8px; padding:14px 30px; margin-bottom:8px;
     display:flex; align-items:center; justify-content:space-between;
     gap:20px; flex-wrap:wrap;
 }
@@ -801,8 +801,14 @@ with main_col:
     r1a, r1b, r1c = st.columns([2.1, 2.1, 1.25])
 
     N_BU   = max(1, len([x for x in df["BusinessUnit"].unique() if x != "Other"]))
-    BAR_H  = N_BU * 56 + 16   # tight fit after CSS iframe fix
-    DON_H  = max(130, (BAR_H - 16) // 3)
+    # DON_H is fixed (independent of BAR_H) so the donut stack — and the Top
+    # Campaign card rendered below it — never move.
+    DON_H  = 130
+    # Grow the bar-chart cards to fill the same height as the 3-donut stack on
+    # the right, so the space under the bars isn't wasted. Row height is driven
+    # by the (unchanged) donut column, so this fills the gap without pushing
+    # anything below it down.
+    BAR_H  = max(N_BU * 56 + 16, 3 * DON_H - 10)
 
     def bu_bar(data_col, title):
         d = df.groupby("BusinessUnit")[data_col].sum().reset_index()
@@ -901,32 +907,32 @@ with main_col:
         return camp.assign(Score=score).loc[score.idxmax()]
 
     bc = best_campaign(df)
-    sc_left, _sc_right = st.columns([4.2, 1.25])
-    with sc_left:
-        if bc is None:
-            st.markdown("<div class='spotlight-card'>"
-                        "<div class='spotlight-empty'>No campaign with clicks for the "
-                        "current filters.</div></div>", unsafe_allow_html=True)
-        else:
-            stats = [
-                ("Spend",       f"{fmt(bc['Spend'])} DKK"),
-                ("Impressions", fmt(bc["Impr"])),
-                ("Clicks",      fmt(bc["Clicks"])),
-                ("CTR",         f"{bc['CTR']:.2f}%"),
-                ("CPC",         f"{bc['CPC']:.2f} DKK"),
-            ]
-            stat_html = "".join(
-                f"<div class='sp-stat'><div class='sp-stat-label'>{l}</div>"
-                f"<div class='sp-stat-val'>{v}</div></div>" for l, v in stats)
-            st.markdown(f"""
-            <div class='spotlight-card'>
-              <div>
-                <div class='sp-badge'>★ TOP CAMPAIGN</div>
-                <div class='sp-name'>{html.escape(str(bc['Campaign']))}</div>
-                <div class='sp-sub'>Best overall performer — blended score of clicks, CTR, CPC &amp; reach</div>
-              </div>
-              <div class='sp-stats'>{stat_html}</div>
-            </div>""", unsafe_allow_html=True)
+    # Full-width card so it spans under the bars AND the donuts — no empty
+    # cell on the right.
+    if bc is None:
+        st.markdown("<div class='spotlight-card'>"
+                    "<div class='spotlight-empty'>No campaign with clicks for the "
+                    "current filters.</div></div>", unsafe_allow_html=True)
+    else:
+        stats = [
+            ("Spend",       f"{fmt(bc['Spend'])} DKK"),
+            ("Impressions", fmt(bc["Impr"])),
+            ("Clicks",      fmt(bc["Clicks"])),
+            ("CTR",         f"{bc['CTR']:.2f}%"),
+            ("CPC",         f"{bc['CPC']:.2f} DKK"),
+        ]
+        stat_html = "".join(
+            f"<div class='sp-stat'><div class='sp-stat-label'>{l}</div>"
+            f"<div class='sp-stat-val'>{v}</div></div>" for l, v in stats)
+        st.markdown(f"""
+        <div class='spotlight-card'>
+          <div>
+            <div class='sp-badge'>★ TOP CAMPAIGN</div>
+            <div class='sp-name'>{html.escape(str(bc['Campaign']))}</div>
+            <div class='sp-sub'>Best overall performer — blended score of clicks, CTR, CPC &amp; reach</div>
+          </div>
+          <div class='sp-stats'>{stat_html}</div>
+        </div>""", unsafe_allow_html=True)
 
     st.markdown("<hr class='sec-div'>", unsafe_allow_html=True)
 
