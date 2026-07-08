@@ -1,8 +1,8 @@
 # Cotes Campaign Analytics — Streamlit App
 
 ## What this is
-A Streamlit dashboard that reads your Funnel Excel export and gives you
-interactive campaign performance views across Google Ads, Meta, and LinkedIn,
+A Streamlit dashboard that reads your excel file and gives you interactive
+campaign performance views across Google Ads, Meta, and LinkedIn,
 with fast filtering and visual performance trends.
 
 It also includes an in-app **Export PDF Report** button that downloads a
