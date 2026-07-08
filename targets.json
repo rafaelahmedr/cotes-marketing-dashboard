@@ -1,0 +1,20 @@
+{
+  "WDD": {
+    "spend": 30000.0,
+    "clicks": 300.0,
+    "ctr": 1.52
+  },
+  "Installers": {
+    "spend": 30000.0,
+    "clicks": 300.0,
+    "ctr": 1.52
+  },
+  "BM": {},
+  "Cotes Group": {
+    "spend": 30000.0,
+    "impressions": 250000.0,
+    "clicks": 6000.0,
+    "ctr": 1.42,
+    "cpc": 9.0
+  }
+}
