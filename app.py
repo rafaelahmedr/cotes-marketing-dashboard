@@ -158,20 +158,37 @@ div[data-baseweb="select"] span { color:#e6edf3 !important; font-size:0.8rem !im
     font-size:0.62rem; color:#8b949e; text-align:center; margin-bottom:4px;
 }
 
-/* ── RESET BUTTON ── */
-.stButton > button,
-.stDownloadButton > button {
+/* ── LEFT-PANEL ACTION BUTTONS (Reset / Admin / Export) ── */
+/* All three share one look: identical box, centered label, equal spacing. */
+.st-key-left_wrap .stButton,
+.st-key-left_wrap .stDownloadButton { width:100% !important; margin:0 0 12px 0 !important; }
+.st-key-left_wrap .stButton > button,
+.st-key-left_wrap .stDownloadButton > button {
     background:#e85d4a !important; color:#ffffff !important;
     border:none !important; font-weight:800 !important;
-    font-size:0.92rem !important; letter-spacing:0.12em !important;
-    text-transform:uppercase !important; width:100% !important;
-    padding:13px 0 !important; border-radius:5px !important;
-    margin-top:10px !important; cursor:pointer !important;
+    font-size:0.85rem !important; letter-spacing:0.1em !important;
+    text-transform:uppercase !important;
+    width:100% !important; box-sizing:border-box !important;
+    height:46px !important; min-height:46px !important;
+    padding:0 12px !important; border-radius:6px !important;
+    margin:0 !important; cursor:pointer !important;
+    display:flex !important; align-items:center !important; justify-content:center !important;
+    gap:6px !important; line-height:1 !important;
+    box-shadow:0 1px 2px rgba(0,0,0,0.25) !important;
+    transition:background .15s ease, transform .05s ease !important;
 }
-/* First button (Reset) gets a bit more separation from the legend above it */
-.st-key-left_wrap .stButton:first-of-type > button { margin-top:22px !important; }
-.stButton > button:hover,
-.stDownloadButton > button:hover { background:#c9402f !important; }
+/* Label text inside the button — keep it on one centered line */
+.st-key-left_wrap .stButton > button p,
+.st-key-left_wrap .stDownloadButton > button p {
+    margin:0 !important; font-weight:800 !important;
+    white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
+}
+/* Extra separation above the first button (Reset) from the legend above it */
+.st-key-left_wrap .stButton:first-of-type { margin-top:18px !important; }
+.st-key-left_wrap .stButton > button:hover,
+.st-key-left_wrap .stDownloadButton > button:hover { background:#c9402f !important; }
+.st-key-left_wrap .stButton > button:active,
+.st-key-left_wrap .stDownloadButton > button:active { transform:translateY(1px) !important; }
 
 /* Kill Streamlit's iframe padding under plotly charts */
 [data-testid="stPlotlyChart"] { margin-bottom:0 !important; padding-bottom:0 !important; }
@@ -739,7 +756,7 @@ with main_col:
         return build_pdf(filters, kpis, bu_rows, ch_rows)
 
     export_slot.download_button(
-        "⬇ EXPORT PDF REPORT",
+        "📄 EXPORT PDF REPORT",
         data=build_report_pdf(),
         file_name="cotes_marketing_report.pdf",
         mime="application/pdf",
