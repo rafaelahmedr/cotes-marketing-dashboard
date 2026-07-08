@@ -802,7 +802,7 @@ with main_col:
 
     N_BU   = max(1, len([x for x in df["BusinessUnit"].unique() if x != "Other"]))
     BAR_H  = N_BU * 56 + 16   # tight fit after CSS iframe fix
-    DON_H  = max(130, (BAR_H - 16) // 3)
+    DON_H  = max(150, (BAR_H - 16) // 3)
 
     def bu_bar(data_col, title):
         d = df.groupby("BusinessUnit")[data_col].sum().reset_index()
@@ -841,15 +841,20 @@ with main_col:
                 # Hide labels on slices under 3% so tiny wedges don't overlap
                 texttemplate="%{percent}", textposition="inside",
                 insidetextorientation="horizontal",
+                # Leave the right ~28% of the plot for the vertical legend so
+                # the donut fills the remaining width without overlap.
+                domain=dict(x=[0.0, 0.72]),
             ))
             fig.update_traces(
                 texttemplate=["%{percent}" if (v / (sum(values) or 1)) >= 0.03 else ""
                               for v in values])
             fig.update_layout(**CT, height=h,
-                margin=dict(l=4, r=4, t=6, b=28),
-                legend=dict(orientation="h", y=-0.18,
-                            font=dict(size=8, color="#8b949e"),
-                            xanchor="center", x=0.5))
+                # Legend on the right (vertical) frees the bottom band so the
+                # donut itself can use the full height.
+                margin=dict(l=4, r=4, t=6, b=6),
+                legend=dict(orientation="v", yanchor="middle", y=0.5,
+                            xanchor="left", x=1.0,
+                            font=dict(size=8, color="#8b949e")))
             return fig
 
         ch = df.groupby("Traffic source")["Cost (*)"].sum().reset_index()
