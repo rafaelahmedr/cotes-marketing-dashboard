@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 import base64
 import io
 import os
+import html
 import json
 import hashlib
 import hmac
@@ -157,6 +158,31 @@ div[data-baseweb="select"] span { color:#e6edf3 !important; font-size:0.8rem !im
 .chart-sub {
     font-size:0.62rem; color:#8b949e; text-align:center; margin-bottom:4px;
 }
+
+/* ── BEST CAMPAIGN SPOTLIGHT ── */
+.spotlight-card {
+    background:linear-gradient(135deg,#1b2230,#161b22);
+    border:1px solid #30363d; border-left:4px solid #e85d4a;
+    border-radius:8px; padding:14px 20px; margin-bottom:8px;
+    display:flex; align-items:center; justify-content:space-between;
+    gap:20px; flex-wrap:wrap;
+}
+.sp-badge {
+    display:inline-block; font-size:0.58rem; font-weight:800; letter-spacing:0.14em;
+    color:#e85d4a; background:rgba(232,93,74,0.12);
+    border:1px solid rgba(232,93,74,0.35);
+    padding:3px 9px; border-radius:20px; margin-bottom:7px;
+}
+.sp-name { font-size:1.35rem; font-weight:800; color:#ffffff; line-height:1.15; }
+.sp-sub  { font-size:0.66rem; color:#8b949e; margin-top:4px; }
+.sp-stats { display:flex; gap:26px; flex-wrap:wrap; }
+.sp-stat  { text-align:right; }
+.sp-stat-label {
+    font-size:0.55rem; font-weight:700; letter-spacing:0.12em;
+    text-transform:uppercase; color:#8b949e; margin-bottom:2px;
+}
+.sp-stat-val { font-size:1.05rem; font-weight:700; color:#e6edf3; }
+.spotlight-empty { color:#8b949e; font-size:0.8rem; }
 
 /* ── LEFT-PANEL ACTION BUTTONS (Reset / Admin / Export) ── */
 /* All three share one look: identical box, centered label, equal spacing. */
@@ -847,6 +873,60 @@ with main_col:
             st.plotly_chart(donut(mt["Media type"], mt["CTR"], "", DON_H),
                             use_container_width=True, config={"displayModeBar":False})
             st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── Best Campaign spotlight (fills the space under the industry bars) ──
+    # "Best" is a blended, min-max-normalized score across the metrics that
+    # matter, so no single dimension (raw clicks / a tiny high-CTR campaign /
+    # a cheap-but-idle one) can win on its own.
+    def best_campaign(data):
+        camp = (data.groupby("Campaign")
+                    .agg(Impr=("Impressions", "sum"), Clicks=("Clicks", "sum"),
+                         Spend=("Cost (*)", "sum"))
+                    .reset_index())
+        # Need clicks (and impressions) for CTR/CPC to be meaningful.
+        camp = camp[(camp["Clicks"] > 0) & (camp["Impr"] > 0)]
+        if camp.empty:
+            return None
+        camp["CTR"] = camp["Clicks"] / camp["Impr"] * 100
+        camp["CPC"] = camp["Spend"] / camp["Clicks"]
+
+        def norm(s):
+            lo, hi = s.min(), s.max()
+            return (s - lo) / (hi - lo) if hi > lo else pd.Series(1.0, index=s.index)
+
+        score = (0.35 * norm(camp["Clicks"])
+                 + 0.30 * norm(camp["CTR"])
+                 + 0.20 * (1 - norm(camp["CPC"]))   # cheaper CPC → higher score
+                 + 0.15 * norm(camp["Impr"]))
+        return camp.assign(Score=score).loc[score.idxmax()]
+
+    bc = best_campaign(df)
+    sc_left, _sc_right = st.columns([4.2, 1.25])
+    with sc_left:
+        if bc is None:
+            st.markdown("<div class='spotlight-card'>"
+                        "<div class='spotlight-empty'>No campaign with clicks for the "
+                        "current filters.</div></div>", unsafe_allow_html=True)
+        else:
+            stats = [
+                ("Spend",       f"{fmt(bc['Spend'])} DKK"),
+                ("Impressions", fmt(bc["Impr"])),
+                ("Clicks",      fmt(bc["Clicks"])),
+                ("CTR",         f"{bc['CTR']:.2f}%"),
+                ("CPC",         f"{bc['CPC']:.2f} DKK"),
+            ]
+            stat_html = "".join(
+                f"<div class='sp-stat'><div class='sp-stat-label'>{l}</div>"
+                f"<div class='sp-stat-val'>{v}</div></div>" for l, v in stats)
+            st.markdown(f"""
+            <div class='spotlight-card'>
+              <div>
+                <div class='sp-badge'>★ TOP CAMPAIGN</div>
+                <div class='sp-name'>{html.escape(str(bc['Campaign']))}</div>
+                <div class='sp-sub'>Best overall performer — blended score of clicks, CTR, CPC &amp; reach</div>
+              </div>
+              <div class='sp-stats'>{stat_html}</div>
+            </div>""", unsafe_allow_html=True)
 
     st.markdown("<hr class='sec-div'>", unsafe_allow_html=True)
 
