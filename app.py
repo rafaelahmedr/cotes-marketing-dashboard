@@ -160,10 +160,12 @@ div[data-baseweb="select"] span { color:#e6edf3 !important; font-size:0.8rem !im
 
 /* ── LEFT-PANEL ACTION BUTTONS (Reset / Admin / Export) ── */
 /* All three share one look: identical box, centered label, equal spacing. */
-.st-key-left_wrap .stButton,
-.st-key-left_wrap .stDownloadButton { width:100% !important; margin:0 0 12px 0 !important; }
-.st-key-left_wrap .stButton > button,
-.st-key-left_wrap .stDownloadButton > button {
+.st-key-left_wrap [data-testid="stButton"],
+.st-key-left_wrap [data-testid="stDownloadButton"] {
+    width:100% !important; display:block !important; margin:0 0 12px 0 !important;
+}
+.st-key-left_wrap [data-testid="stButton"] > button,
+.st-key-left_wrap [data-testid="stDownloadButton"] > button {
     background:#e85d4a !important; color:#ffffff !important;
     border:none !important; font-weight:800 !important;
     font-size:0.85rem !important; letter-spacing:0.1em !important;
@@ -178,17 +180,20 @@ div[data-baseweb="select"] span { color:#e6edf3 !important; font-size:0.8rem !im
     transition:background .15s ease, transform .05s ease !important;
 }
 /* Label text inside the button — keep it on one centered line */
-.st-key-left_wrap .stButton > button p,
-.st-key-left_wrap .stDownloadButton > button p {
-    margin:0 !important; font-weight:800 !important;
+.st-key-left_wrap [data-testid="stButton"] > button p,
+.st-key-left_wrap [data-testid="stDownloadButton"] > button p,
+.st-key-left_wrap [data-testid="stButton"] > button div,
+.st-key-left_wrap [data-testid="stDownloadButton"] > button div {
+    margin:0 !important; font-weight:800 !important; text-align:center !important;
+    width:100% !important;
     white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
 }
 /* Extra separation above the first button (Reset) from the legend above it */
-.st-key-left_wrap .stButton:first-of-type { margin-top:18px !important; }
-.st-key-left_wrap .stButton > button:hover,
-.st-key-left_wrap .stDownloadButton > button:hover { background:#c9402f !important; }
-.st-key-left_wrap .stButton > button:active,
-.st-key-left_wrap .stDownloadButton > button:active { transform:translateY(1px) !important; }
+.st-key-left_wrap [data-testid="stButton"]:first-of-type { margin-top:18px !important; }
+.st-key-left_wrap [data-testid="stButton"] > button:hover,
+.st-key-left_wrap [data-testid="stDownloadButton"] > button:hover { background:#c9402f !important; }
+.st-key-left_wrap [data-testid="stButton"] > button:active,
+.st-key-left_wrap [data-testid="stDownloadButton"] > button:active { transform:translateY(1px) !important; }
 
 /* Kill Streamlit's iframe padding under plotly charts */
 [data-testid="stPlotlyChart"] { margin-bottom:0 !important; padding-bottom:0 !important; }
