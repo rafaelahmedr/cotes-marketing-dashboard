@@ -159,7 +159,8 @@ div[data-baseweb="select"] span { color:#e6edf3 !important; font-size:0.8rem !im
 }
 
 /* ── RESET BUTTON ── */
-.stButton > button {
+.stButton > button,
+.stDownloadButton > button {
     background:#e85d4a !important; color:#ffffff !important;
     border:none !important; font-weight:800 !important;
     font-size:0.92rem !important; letter-spacing:0.12em !important;
@@ -169,7 +170,8 @@ div[data-baseweb="select"] span { color:#e6edf3 !important; font-size:0.8rem !im
 }
 /* First button (Reset) gets a bit more separation from the legend above it */
 .st-key-left_wrap .stButton:first-of-type > button { margin-top:22px !important; }
-.stButton > button:hover { background:#c9402f !important; }
+.stButton > button:hover,
+.stDownloadButton > button:hover { background:#c9402f !important; }
 
 /* Kill Streamlit's iframe padding under plotly charts */
 [data-testid="stPlotlyChart"] { margin-bottom:0 !important; padding-bottom:0 !important; }
@@ -237,6 +239,74 @@ def fmt(v):
     if v >= 1_000_000: return f"{v/1_000_000:.2f}M"
     if v >= 1_000:     return f"{v/1_000:.1f}K"
     return f"{v:,.0f}"
+
+# ── PDF export ───────────────────────────────────────────────────────────────
+def build_pdf(filters: list, kpis: list, bu_rows: list, ch_rows: list) -> bytes:
+    """Render a one-page summary of the currently filtered view to PDF bytes.
+
+    filters : list of (label, value) shown as the applied-filter context.
+    kpis    : list of (label, value) for the KPI strip.
+    bu_rows : [(BusinessUnit, Impressions, Clicks, Spend), ...]
+    ch_rows : [(Channel, Impressions, Clicks, Spend), ...]
+    """
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
+                                    TableStyle)
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=18*mm, rightMargin=18*mm,
+                            topMargin=16*mm, bottomMargin=16*mm,
+                            title="Cotes Marketing Dashboard — Report")
+    styles = getSampleStyleSheet()
+    h1 = ParagraphStyle("h1", parent=styles["Heading1"], fontSize=18,
+                        textColor=colors.HexColor("#e85d4a"), spaceAfter=2)
+    sub = ParagraphStyle("sub", parent=styles["Normal"], fontSize=9,
+                         textColor=colors.HexColor("#666666"), spaceAfter=10)
+    h2 = ParagraphStyle("h2", parent=styles["Heading2"], fontSize=12,
+                        spaceBefore=12, spaceAfter=6)
+
+    story: list = [Paragraph("Cotes Marketing Dashboard", h1)]
+    filt_txt = " &nbsp;·&nbsp; ".join(f"<b>{k}:</b> {v}" for k, v in filters)
+    story.append(Paragraph("Filtered view — " + filt_txt, sub))
+
+    def make_table(header, rows, col_widths=None):
+        data = [header] + rows
+        t = Table(data, colWidths=col_widths, hAlign="LEFT")
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#161b22")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+             [colors.white, colors.HexColor("#f4f5f7")]),
+            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d0d7de")),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        return t
+
+    story.append(Paragraph("Key Metrics", h2))
+    story.append(make_table(["Metric", "Value"],
+                            [[l, v] for l, v in kpis],
+                            col_widths=[90*mm, 84*mm]))
+
+    if bu_rows:
+        story.append(Paragraph("Business Units", h2))
+        story.append(make_table(["Business Unit", "Impressions", "Clicks", "Spend (DKK)"],
+                                bu_rows))
+    if ch_rows:
+        story.append(Paragraph("Channels", h2))
+        story.append(make_table(["Channel", "Impressions", "Clicks", "Spend (DKK)"],
+                                ch_rows))
+
+    story.append(Spacer(1, 12))
+    doc.build(story)
+    return buf.getvalue()
 
 # ── Data load ──────────────────────────────────────────────────────────────────
 REQUIRED_COLS = ["Date", "Campaign", "Traffic source"]
@@ -535,6 +605,10 @@ with left_col.container(key="left_wrap"):
     if st.button(admin_label, key="admin_btn"):
         admin_dialog()
 
+    # Filled in later, once the filtered data & KPIs exist (main column runs
+    # after this block, so we reserve a slot here and populate it below).
+    export_slot = st.empty()
+
 # ── MAIN CONTENT ───────────────────────────────────────────────────────────────
 with main_col:
 
@@ -636,6 +710,42 @@ with main_col:
                   <div class='kpi-unit'>{unit}</div>
                   {delta_html}
                 </div>""", unsafe_allow_html=True)
+
+    # ── Export PDF Report ────────────────────────────────────────────────
+    # Summary of the currently filtered view. Built lazily on click so the
+    # (relatively expensive) reportlab render only runs when requested.
+    def build_report_pdf():
+        bu = (df[df["BusinessUnit"] != "Other"]
+              .groupby("BusinessUnit")
+              .agg(Impressions=("Impressions", "sum"),
+                   Clicks=("Clicks", "sum"), Spend=("Cost (*)", "sum"))
+              .sort_values("Spend", ascending=False).reset_index())
+        ch = (df.groupby("Traffic source")
+              .agg(Impressions=("Impressions", "sum"),
+                   Clicks=("Clicks", "sum"), Spend=("Cost (*)", "sum"))
+              .sort_values("Spend", ascending=False).reset_index())
+        filters = [
+            ("Business Unit", st.session_state.f_bu),
+            ("Year", st.session_state.f_year),
+            ("Month", st.session_state.f_month),
+            ("Channel", st.session_state.f_ch),
+        ]
+        kpis = [(label, f"{val} {unit}".strip())
+                for (_k, label, val, unit, *_rest) in cards]
+        bu_rows = [[r.BusinessUnit, fmt(r.Impressions), fmt(r.Clicks), fmt(r.Spend)]
+                   for r in bu.itertuples()]
+        ch_rows = [[r._1, fmt(r.Impressions), fmt(r.Clicks), fmt(r.Spend)]
+                   for r in ch.itertuples()]
+        return build_pdf(filters, kpis, bu_rows, ch_rows)
+
+    export_slot.download_button(
+        "⬇ EXPORT PDF REPORT",
+        data=build_report_pdf(),
+        file_name="cotes_marketing_report.pdf",
+        mime="application/pdf",
+        use_container_width=True,
+        key="export_pdf_btn",
+    )
 
     st.markdown("<hr class='sec-div'>", unsafe_allow_html=True)
 
