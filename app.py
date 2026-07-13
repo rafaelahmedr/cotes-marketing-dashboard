@@ -8,6 +8,7 @@ import html
 import json
 import hashlib
 import hmac
+from datetime import date
 from pathlib import Path
 
 st.set_page_config(
@@ -498,7 +499,7 @@ if "is_admin" not in st.session_state: st.session_state.is_admin = False
 
 # Metric keys used for targets (label, unit, direction where "higher"=more is better)
 TARGET_METRICS = [
-    ("spend",       "Spend Target (DKK)",  "DKK", "higher"),
+    ("spend",       "Spend Target (DKK)",  "DKK", "lower"),
     ("impressions", "Impressions Target",  "",    "higher"),
     ("clicks",      "Clicks Target",       "",    "higher"),
     ("ctr",         "CTR Target (%)",      "%",   "higher"),
@@ -508,10 +509,31 @@ TARGET_METRICS = [
 # ── Persistent, admin-managed targets ────────────────────────────────────────
 TARGETS_FILE = Path(__file__).parent / "targets.json"
 
+_METRIC_KEYS = {m[0] for m in TARGET_METRICS}
+
+def _normalize_targets(data: dict) -> dict:
+    """Coerce the stored file into the current shape: {BU: {year: {metric: value}}}.
+
+    An older format stored targets flat per BU ({BU: {metric: value}}) with no
+    year. Those pre-dated per-year targets, so we can't know which year they
+    meant — drop them rather than mis-attribute them to a year.
+    """
+    clean = {}
+    for bu, by_year in (data or {}).items():
+        if not isinstance(by_year, dict):
+            continue
+        # Old flat format: values are metric keys, not year keys → discard.
+        if any(k in _METRIC_KEYS for k in by_year):
+            continue
+        years = {y: v for y, v in by_year.items() if isinstance(v, dict) and v}
+        if years:
+            clean[bu] = years
+    return clean
+
 def load_targets() -> dict:
     try:
         with open(TARGETS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            return _normalize_targets(json.load(f))
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
@@ -577,11 +599,27 @@ def admin_dialog():
     if not bu_choices:
         st.caption("No business units available in the current data.")
         return
-    default_idx = (bu_choices.index(st.session_state.f_bu)
-                   if st.session_state.f_bu in bu_choices else 0)
-    edit_bu = st.selectbox("Business Unit to edit", bu_choices,
-        index=default_idx, key="target_bu_sel")
-    cur = saved_targets.get(edit_bu, {})
+
+    # Years available to set: whatever the data has, plus the current and next
+    # year so an admin can set targets ahead of any data arriving.
+    this_year = date.today().year
+    year_choices = sorted(
+        {y for y in all_years if y != "All"} | {str(this_year), str(this_year + 1)},
+        reverse=True)
+
+    esel = st.columns(2)
+    with esel[0]:
+        default_bu = (bu_choices.index(st.session_state.f_bu)
+                      if st.session_state.f_bu in bu_choices else 0)
+        edit_bu = st.selectbox("Business Unit to edit", bu_choices,
+            index=default_bu, key="target_bu_sel")
+    with esel[1]:
+        default_yr = (year_choices.index(st.session_state.f_year)
+                      if st.session_state.f_year in year_choices else 0)
+        edit_year = st.selectbox("Year to edit", year_choices,
+            index=default_yr, key="target_yr_sel")
+
+    cur = saved_targets.get(edit_bu, {}).get(edit_year, {})
     with st.form("target_form"):
         tcols = st.columns(len(TARGET_METRICS))
         new_vals = {}
@@ -589,13 +627,22 @@ def admin_dialog():
             step = 0.1 if key in ("ctr", "cpc") else 1000.0
             new_vals[key] = c.number_input(
                 label, min_value=0.0, step=step,
-                value=float(cur.get(key, 0.0)), key=f"tgt_{key}")
+                value=float(cur.get(key, 0.0)), key=f"tgt_{key}_{edit_bu}_{edit_year}")
         if st.form_submit_button("Save targets"):
-            saved_targets[edit_bu] = {k: v for k, v in new_vals.items() if v > 0}
+            clean = {k: v for k, v in new_vals.items() if v > 0}
+            by_year = saved_targets.setdefault(edit_bu, {})
+            if clean:
+                by_year[edit_year] = clean
+            else:
+                by_year.pop(edit_year, None)   # all zeroed → clear this year
+            if not by_year:
+                saved_targets.pop(edit_bu, None)
             save_targets(saved_targets)
-            st.success(f"Targets saved for {edit_bu}.")
+            st.success(f"Targets saved for {edit_bu} · {edit_year}.")
             st.rerun()
-    st.caption("Targets apply when a single Business Unit is selected in the top filter bar.")
+    st.caption("Targets are set per Business Unit **per year**. They show on the KPI "
+               "cards only when that single Business Unit and that Year are selected, "
+               "with Month set to “All” (i.e. viewing the whole year).")
 
 # ══════════════════════════════════════════════════════════════════════
 # LAYOUT
@@ -713,9 +760,14 @@ with main_col:
     ctr_delta = f"{'▲' if ctr_vs>=0 else '▼'} {abs(ctr_vs):.3f}% vs avg"
     cpc_delta = f"{'▼' if cpc_vs<=0 else '▲'} {abs(cpc_vs):.2f} DKK vs avg"
 
-    # Targets only apply when a single BU is selected
-    active_targets = (saved_targets.get(st.session_state.f_bu, {})
-                      if st.session_state.f_bu != "All" else {})
+    # Targets are set per BU per year, so they only apply when a single BU and a
+    # single full year are in view: one BU, one Year, and Month = "All".
+    active_targets = {}
+    if (st.session_state.f_bu != "All"
+            and st.session_state.f_year != "All"
+            and st.session_state.f_month == "All"):
+        active_targets = (saved_targets.get(st.session_state.f_bu, {})
+                          .get(st.session_state.f_year, {}))
 
     def target_html(actual, target, direction):
         """Return % of target + progress bar, or None if no target set."""
