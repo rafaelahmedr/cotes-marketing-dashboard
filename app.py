@@ -493,8 +493,9 @@ GLOBAL_CTR = (_c / _i * 100) if _i > 0 else 0
 GLOBAL_CPC = (_s / _c)       if _c > 0 else 0
 
 # ── Session state ──────────────────────────────────────────────────────────────
-for k, v in [("f_bu","All"),("f_year","All"),("f_month","All"),("f_ch","All")]:
-    if k not in st.session_state: st.session_state[k] = v
+# Filters are multi-select: each holds a list of chosen values; [] means "all".
+for k in ["f_bu","f_year","f_month","f_ch"]:
+    if k not in st.session_state: st.session_state[k] = []
 if "is_admin" not in st.session_state: st.session_state.is_admin = False
 
 # Metric keys used for targets (label, unit, direction where "higher"=more is better)
@@ -607,15 +608,16 @@ def admin_dialog():
         {y for y in all_years if y != "All"} | {str(this_year), str(this_year + 1)},
         reverse=True)
 
+    # Pre-select the filter's choice only when exactly one value is picked.
+    cur_bu = st.session_state.f_bu[0] if len(st.session_state.f_bu) == 1 else None
+    cur_yr = st.session_state.f_year[0] if len(st.session_state.f_year) == 1 else None
     esel = st.columns(2)
     with esel[0]:
-        default_bu = (bu_choices.index(st.session_state.f_bu)
-                      if st.session_state.f_bu in bu_choices else 0)
+        default_bu = bu_choices.index(cur_bu) if cur_bu in bu_choices else 0
         edit_bu = st.selectbox("Business Unit to edit", bu_choices,
             index=default_bu, key="target_bu_sel")
     with esel[1]:
-        default_yr = (year_choices.index(st.session_state.f_year)
-                      if st.session_state.f_year in year_choices else 0)
+        default_yr = year_choices.index(cur_yr) if cur_yr in year_choices else 0
         edit_year = st.selectbox("Year to edit", year_choices,
             index=default_yr, key="target_yr_sel")
 
@@ -693,7 +695,11 @@ with left_col.container(key="left_wrap"):
 
     if st.button("RESET FILTERS", key="reset_btn"):
         for k in ["f_bu","f_year","f_month","f_ch"]:
-            st.session_state[k] = "All"
+            st.session_state[k] = []
+        # The dropdowns keep their own widget state under these keys, so clear
+        # them too or the multiselects would re-show the previous selection.
+        for wk in ["sel_bu","sel_yr","sel_mo","sel_ch"]:
+            st.session_state.pop(wk, None)
         st.rerun()
 
     admin_label = "🔐 ADMIN PANEL" if not st.session_state.is_admin else "🔓 ADMIN PANEL"
@@ -715,31 +721,31 @@ with main_col:
         fa, fb, fc, fd = st.columns(4)
         with fa:
             st.markdown("<div class='filter-label'>Business Unit</div>", unsafe_allow_html=True)
-            st.session_state.f_bu = st.selectbox("bu", all_bu,
-                index=all_bu.index(st.session_state.f_bu) if st.session_state.f_bu in all_bu else 0,
+            st.session_state.f_bu = st.multiselect("bu", all_bu[1:],
+                default=st.session_state.f_bu, placeholder="All",
                 label_visibility="collapsed", key="sel_bu")
         with fb:
             st.markdown("<div class='filter-label'>Year</div>", unsafe_allow_html=True)
-            st.session_state.f_year = st.selectbox("yr", all_years,
-                index=all_years.index(st.session_state.f_year) if st.session_state.f_year in all_years else 0,
+            st.session_state.f_year = st.multiselect("yr", all_years[1:],
+                default=st.session_state.f_year, placeholder="All",
                 label_visibility="collapsed", key="sel_yr")
         with fc:
             st.markdown("<div class='filter-label'>Month</div>", unsafe_allow_html=True)
-            st.session_state.f_month = st.selectbox("mo", all_months,
-                index=all_months.index(st.session_state.f_month) if st.session_state.f_month in all_months else 0,
+            st.session_state.f_month = st.multiselect("mo", all_months[1:],
+                default=st.session_state.f_month, placeholder="All",
                 label_visibility="collapsed", key="sel_mo")
         with fd:
             st.markdown("<div class='filter-label'>Channel</div>", unsafe_allow_html=True)
-            st.session_state.f_ch = st.selectbox("ch", all_ch,
-                index=all_ch.index(st.session_state.f_ch) if st.session_state.f_ch in all_ch else 0,
+            st.session_state.f_ch = st.multiselect("ch", all_ch[1:],
+                default=st.session_state.f_ch, placeholder="All",
                 label_visibility="collapsed", key="sel_ch")
 
     # ── Apply filters ────────────────────────────────────────────────────
     mask = pd.Series(True, index=df_raw.index)
-    if st.session_state.f_bu    != "All": mask &= df_raw["BusinessUnit"]   == st.session_state.f_bu
-    if st.session_state.f_year  != "All": mask &= df_raw["Year"]           == int(st.session_state.f_year)
-    if st.session_state.f_month != "All": mask &= df_raw["Month"]          == st.session_state.f_month
-    if st.session_state.f_ch    != "All": mask &= df_raw["Traffic source"] == st.session_state.f_ch
+    if st.session_state.f_bu:    mask &= df_raw["BusinessUnit"].isin(st.session_state.f_bu)
+    if st.session_state.f_year:  mask &= df_raw["Year"].isin([int(y) for y in st.session_state.f_year])
+    if st.session_state.f_month: mask &= df_raw["Month"].isin(st.session_state.f_month)
+    if st.session_state.f_ch:    mask &= df_raw["Traffic source"].isin(st.session_state.f_ch)
     df = df_raw[mask]
 
     if df.empty:
@@ -763,11 +769,11 @@ with main_col:
     # Targets are set per BU per year, so they only apply when a single BU and a
     # single full year are in view: one BU, one Year, and Month = "All".
     active_targets = {}
-    if (st.session_state.f_bu != "All"
-            and st.session_state.f_year != "All"
-            and st.session_state.f_month == "All"):
-        active_targets = (saved_targets.get(st.session_state.f_bu, {})
-                          .get(st.session_state.f_year, {}))
+    if (len(st.session_state.f_bu) == 1
+            and len(st.session_state.f_year) == 1
+            and not st.session_state.f_month):
+        active_targets = (saved_targets.get(st.session_state.f_bu[0], {})
+                          .get(st.session_state.f_year[0], {}))
 
     def target_html(actual, target, direction):
         """Return % of target + progress bar, or None if no target set."""
@@ -824,11 +830,13 @@ with main_col:
               .agg(Impressions=("Impressions", "sum"),
                    Clicks=("Clicks", "sum"), Spend=("Cost (*)", "sum"))
               .sort_values("Spend", ascending=False).reset_index())
+        def _filt_txt(vals):
+            return ", ".join(str(v) for v in vals) if vals else "All"
         filters = [
-            ("Business Unit", st.session_state.f_bu),
-            ("Year", st.session_state.f_year),
-            ("Month", st.session_state.f_month),
-            ("Channel", st.session_state.f_ch),
+            ("Business Unit", _filt_txt(st.session_state.f_bu)),
+            ("Year", _filt_txt(st.session_state.f_year)),
+            ("Month", _filt_txt(st.session_state.f_month)),
+            ("Channel", _filt_txt(st.session_state.f_ch)),
         ]
         kpis = [(label, f"{val} {unit}".strip())
                 for (_k, label, val, unit, *_rest) in cards]
