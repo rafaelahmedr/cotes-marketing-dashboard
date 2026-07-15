@@ -694,12 +694,11 @@ with left_col.container(key="left_wrap"):
     """, unsafe_allow_html=True)
 
     if st.button("RESET FILTERS", key="reset_btn"):
+        # These keys back the multiselects directly. This handler runs before the
+        # widgets are instantiated (left column renders first), so clearing them
+        # here is a legal state change and the dropdowns come back empty.
         for k in ["f_bu","f_year","f_month","f_ch"]:
             st.session_state[k] = []
-        # The dropdowns keep their own widget state under these keys, so clear
-        # them too or the multiselects would re-show the previous selection.
-        for wk in ["sel_bu","sel_yr","sel_mo","sel_ch"]:
-            st.session_state.pop(wk, None)
         st.rerun()
 
     admin_label = "🔐 ADMIN PANEL" if not st.session_state.is_admin else "🔓 ADMIN PANEL"
@@ -719,26 +718,25 @@ with main_col:
     # ── Filter bar ──────────────────────────────────────────────────────
     with sticky:
         fa, fb, fc, fd = st.columns(4)
+        # The widget key IS the state (f_bu/f_year/f_month/f_ch). No default= and
+        # no reassignment — that mix makes Streamlit ignore resets. RESET FILTERS
+        # clears these keys directly (see the button handler above).
         with fa:
             st.markdown("<div class='filter-label'>Business Unit</div>", unsafe_allow_html=True)
-            st.session_state.f_bu = st.multiselect("bu", all_bu[1:],
-                default=st.session_state.f_bu, placeholder="All",
-                label_visibility="collapsed", key="sel_bu")
+            st.multiselect("bu", all_bu[1:], placeholder="All",
+                label_visibility="collapsed", key="f_bu")
         with fb:
             st.markdown("<div class='filter-label'>Year</div>", unsafe_allow_html=True)
-            st.session_state.f_year = st.multiselect("yr", all_years[1:],
-                default=st.session_state.f_year, placeholder="All",
-                label_visibility="collapsed", key="sel_yr")
+            st.multiselect("yr", all_years[1:], placeholder="All",
+                label_visibility="collapsed", key="f_year")
         with fc:
             st.markdown("<div class='filter-label'>Month</div>", unsafe_allow_html=True)
-            st.session_state.f_month = st.multiselect("mo", all_months[1:],
-                default=st.session_state.f_month, placeholder="All",
-                label_visibility="collapsed", key="sel_mo")
+            st.multiselect("mo", all_months[1:], placeholder="All",
+                label_visibility="collapsed", key="f_month")
         with fd:
             st.markdown("<div class='filter-label'>Channel</div>", unsafe_allow_html=True)
-            st.session_state.f_ch = st.multiselect("ch", all_ch[1:],
-                default=st.session_state.f_ch, placeholder="All",
-                label_visibility="collapsed", key="sel_ch")
+            st.multiselect("ch", all_ch[1:], placeholder="All",
+                label_visibility="collapsed", key="f_ch")
 
     # ── Apply filters ────────────────────────────────────────────────────
     mask = pd.Series(True, index=df_raw.index)
